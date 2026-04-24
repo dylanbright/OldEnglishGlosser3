@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Old English Glosser</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=UnifrakturCook:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body data-show-trans="0">
+
+<div class="shell">
+  <!-- Folio (left) -->
+  <section class="folio" aria-label="Manuscript folio">
+    <header class="folio-head">
+      <div class="title" id="folio-title" contenteditable="false">Old English Glosser</div>
+      <div class="meta" id="folio-meta" contenteditable="false">— no text loaded —</div>
+    </header>
+    <div class="folio-sub" id="folio-sub" contenteditable="false">Paste a text to begin</div>
+
+    <div class="poem" id="poem"></div>
+
+    <div class="folio-empty" id="folio-empty">
+      <div class="mark">¶</div>
+      <div class="mark-sub">
+        No text loaded. Paste an Old English passage to begin — click any word to gloss it.
+      </div>
+      <button class="act primary" id="btn-paste-empty">Paste text</button>
+    </div>
+
+    <footer class="folio-foot">
+      <div class="foot-left">Click any word to reveal its gloss</div>
+      <div class="foot-actions">
+        <button class="foot-btn" id="btn-new">New text</button>
+        <button class="foot-btn" id="btn-import">Import JSON</button>
+        <button class="foot-btn" id="btn-export">Export JSON</button>
+        <button class="foot-btn" id="btn-export-csv">Anki CSV</button>
+        <button class="foot-btn" id="btn-reset">Clear selection</button>
+      </div>
+    </footer>
+  </section>
+
+  <!-- Gloss panel (right) -->
+  <aside class="panel" aria-label="Gloss panel">
+    <div class="panel-head">
+      <div class="eyebrow">Gloss</div>
+      <div class="hint" id="panel-hint">— select a word —</div>
+    </div>
+
+    <div class="panel-empty" id="panel-empty">
+      <div class="mark">℣</div>
+      <div class="mark-sub">Tap any word in the folio to see its headword, grammar, and modern sense.</div>
+    </div>
+
+    <div class="panel-loading" id="panel-loading">
+      <div class="mark">⁂</div>
+      <div class="mark-sub">Consulting the glossary…</div>
+    </div>
+
+    <div class="panel-error" id="panel-error">
+      <div class="mark err">!</div>
+      <div class="mark-sub" id="panel-error-msg">Something went wrong.</div>
+      <button class="act" id="btn-retry">Try again</button>
+    </div>
+
+    <div class="detail" id="detail">
+      <div class="headword">
+        <div class="form" id="d-form">—</div>
+        <div class="pos" id="d-pos">—</div>
+      </div>
+      <div class="lemma">
+        from the headword <span class="lemma-form" id="d-lemma">—</span>
+      </div>
+      <div class="gloss-meaning" id="d-gloss">—</div>
+      <dl class="parse">
+        <dt>Parse</dt>     <dd id="d-parse">—</dd>
+        <dt>Line</dt>      <dd id="d-line">—</dd>
+        <dt>Context</dt>   <dd id="d-context">—</dd>
+        <dt>Etymology</dt> <dd id="d-etym">—</dd>
+      </dl>
+      <div class="actions">
+        <button class="act" id="act-save">✦ Save</button>
+        <button class="act" id="act-deep" title="Re-gloss with extended reasoning">⁂ Double-check</button>
+        <button class="act" id="act-next">Next →</button>
+      </div>
+    </div>
+
+    <div class="vocab">
+      <div class="vocab-head">
+        <div class="eyebrow">Vocabulary</div>
+        <div class="count" id="v-count">nil saved</div>
+      </div>
+      <ul class="vocab-list" id="vocab-list"></ul>
+    </div>
+  </aside>
+</div>
+
+<!-- Paste modal -->
+<div class="modal" id="paste-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-body" role="dialog" aria-labelledby="paste-title">
+    <div class="modal-head">
+      <div class="eyebrow" id="paste-title">New text</div>
+      <button class="modal-close" data-close aria-label="Close">×</button>
+    </div>
+    <label class="field">
+      <span class="field-label">Title</span>
+      <input type="text" id="in-title" placeholder="e.g. Cædmon's Hymn">
+    </label>
+    <label class="field">
+      <span class="field-label">Metadata</span>
+      <input type="text" id="in-meta" placeholder="e.g. West Saxon · c. 890">
+    </label>
+    <label class="field">
+      <span class="field-label">Subtitle</span>
+      <input type="text" id="in-sub" placeholder="e.g. after Bede, Historia Ecclesiastica iv. xxiv">
+    </label>
+    <label class="field">
+      <span class="field-label">Text</span>
+      <textarea id="in-text" rows="10" placeholder="Paste Old English text here. Use line breaks to separate verses."></textarea>
+    </label>
+    <div class="modal-actions">
+      <button class="foot-btn" data-close>Cancel</button>
+      <button class="act primary" id="btn-load">Load text</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".json,application/json" style="display:none">
+
+<script src="app.js"></script>
+</body>
+</html>
