@@ -192,6 +192,7 @@ body {
   50% { opacity: 0.55; }
 }
 .punct { color: var(--ink-soft); }
+.line.para-break { margin-top: 1.6em; }
 
 /* Illuminated first letter */
 .drop {
@@ -474,8 +475,22 @@ body {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 28px;
+}
+
+/* Edit mode */
+.detail.editing [contenteditable="true"] {
+  outline: 1px solid var(--rule);
+  background: var(--paper-deep);
+  border-radius: 2px;
+  cursor: text;
+  min-width: 2ch;
+}
+.detail.editing [contenteditable="true"]:focus {
+  outline: 1px solid var(--rubric);
+  background: oklch(0.92 0.040 80 / 0.5);
 }
 .act {
   flex: 1;
