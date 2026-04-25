@@ -224,7 +224,10 @@
         span.dataset.line = String(i);
         span.dataset.idx = String(j);
         verse.appendChild(span);
-        verse.appendChild(document.createTextNode(' '));
+        const nextTok = tokens[j + 1];
+        if (!nextTok || !nextTok.punct || !/^[.,;:!?)\]›»\u203a]/.test(nextTok.punct)) {
+          verse.appendChild(document.createTextNode(' '));
+        }
       });
       line.appendChild(verse);
       poem.appendChild(line);
