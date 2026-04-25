@@ -25,9 +25,12 @@
   const dLine      = $('d-line');
   const dContext   = $('d-context');
   const dEtym      = $('d-etym');
-  const actSave    = $('act-save');
-  const actDeep    = $('act-deep');
-  const actNext    = $('act-next');
+  const actSave       = $('act-save');
+  const actDeep       = $('act-deep');
+  const actNext       = $('act-next');
+  const actEdit       = $('act-edit');
+  const actEditSave   = $('act-edit-save');
+  const actEditCancel = $('act-edit-cancel');
   const btnRetry   = $('btn-retry');
   const vocabList  = $('vocab-list');
   const vCount     = $('v-count');
@@ -54,6 +57,7 @@
       subtitle: '',
       lines: [],       // [[{ w, punctBefore?, punctAfter? } | { punct }, ...], ...]
       lineText: [],    // cached raw line strings for context
+      paraBreaks: [],  // line indices that open a new paragraph (preceded by blank line)
       glosses: {},     // "li:idx" -> { lemma, pos, parse, gloss }
       vocab: [],       // [{ key, w, lemma, pos, gloss }]
     };
@@ -63,6 +67,7 @@
   let activeLine = null;
   let activeIdx  = null;
   let pendingRequests = 0;
+  let editMode = false;
 
   function loadDoc() {
     try {
@@ -86,6 +91,7 @@
       vocab: Array.isArray(d.vocab) ? d.vocab : [],
       lines: Array.isArray(d.lines) ? d.lines : [],
       lineText: Array.isArray(d.lineText) ? d.lineText : [],
+      paraBreaks: Array.isArray(d.paraBreaks) ? d.paraBreaks : [],
     };
   }
 
@@ -111,9 +117,11 @@
     const rawLines = text.split(/\r?\n/);
     const lines = [];
     const lineText = [];
+    const paraBreaks = [];
+    let prevBlank = false;
     for (const raw of rawLines) {
       const trimmed = raw.trim();
-      if (!trimmed) continue;
+      if (!trimmed) { prevBlank = true; continue; }
       const matches = trimmed.match(TOKEN_RE) || [];
       const initial = [];
       for (const m of matches) {
@@ -147,11 +155,13 @@
         tokens.push(cur);
       }
       if (tokens.length) {
+        if (prevBlank && lines.length > 0) paraBreaks.push(lines.length);
         lines.push(tokens);
         lineText.push(trimmed);
+        prevBlank = false;
       }
     }
-    return { lines, lineText };
+    return { lines, lineText, paraBreaks };
   }
 
   function stripWordDots(s) {
@@ -173,9 +183,11 @@
 
     if (!hasText) return;
 
+    const paraBreakSet = new Set(doc.paraBreaks || []);
     doc.lines.forEach((tokens, i) => {
       const line = document.createElement('div');
       line.className = 'line';
+      if (paraBreakSet.has(i)) line.classList.add('para-break');
       line.dataset.line = String(i + 1);
 
       const num = document.createElement('span');
@@ -287,6 +299,7 @@
 
   // —————— Selection ——————
   async function selectWord(li, idx, opts) {
+    if (editMode) exitEditMode(false);
     const token = doc.lines[li] && doc.lines[li][idx];
     if (!token || !token.w) return;
     const force = !!(opts && opts.force);
@@ -331,6 +344,98 @@
       showPanel('error');
     } finally {
       wEls.forEach(el => el.classList.remove('loading'));
+    }
+  }
+
+  // —————— Edit mode ——————
+  function enterEditMode() {
+    if (activeLine === null) return;
+    const key = vocabKey(activeLine, activeIdx);
+    const gloss = doc.glosses[key];
+    if (!gloss) return;
+    editMode = true;
+    detail.classList.add('editing');
+
+    dForm.contentEditable = 'true';
+    dPos.contentEditable  = 'true';
+    dLemma.contentEditable = 'true';
+    dGloss.contentEditable = 'true';
+    dEtym.contentEditable  = 'true';
+    // Replace parse chips with raw comma-separated text for editing
+    dParse.innerHTML = '';
+    dParse.textContent = gloss.parse || '';
+    dParse.contentEditable = 'true';
+
+    actSave.hidden = true;
+    actDeep.hidden = true;
+    actNext.hidden = true;
+    actEdit.hidden = true;
+    actEditSave.hidden = false;
+    actEditCancel.hidden = false;
+
+    dForm.focus();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(dForm);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function exitEditMode(save) {
+    editMode = false;
+    detail.classList.remove('editing');
+
+    if (save && activeLine !== null) {
+      const key = vocabKey(activeLine, activeIdx);
+      const gloss = doc.glosses[key];
+      const token = doc.lines[activeLine] && doc.lines[activeLine][activeIdx];
+      if (gloss && token) {
+        const newForm  = dForm.textContent.trim();
+        const newPos   = dPos.textContent.trim();
+        const newLemma = dLemma.textContent.trim();
+        const newGloss = dGloss.textContent.trim();
+        const newParse = dParse.textContent.trim();
+        const newEtym  = dEtym.textContent.trim();
+        const wordChanged = newForm && newForm !== token.w;
+
+        if (newPos)   gloss.pos   = newPos;
+        if (newLemma) gloss.lemma = newLemma;
+        if (newGloss) gloss.gloss = newGloss;
+        gloss.parse     = newParse;
+        gloss.etymology = newEtym;
+
+        if (wordChanged) {
+          token.w = newForm;
+          delete token.display;
+          const ve = doc.vocab.find(v => v.key === key);
+          if (ve) { ve.w = newForm; ve.gloss = newGloss || ve.gloss; }
+          renderVocab();
+        }
+        saveDoc();
+        if (wordChanged) {
+          renderFolio();
+          document.querySelectorAll(`.w[data-line="${activeLine}"][data-idx="${activeIdx}"]`)
+            .forEach(el => el.classList.add('active'));
+        }
+      }
+    }
+
+    [dForm, dPos, dLemma, dGloss, dParse, dEtym].forEach(el => {
+      el.contentEditable = 'false';
+    });
+    actSave.hidden = false;
+    actDeep.hidden = false;
+    actNext.hidden = false;
+    actEdit.hidden = false;
+    actEditSave.hidden = true;
+    actEditCancel.hidden = true;
+
+    // Re-render detail to restore chips and proper formatting
+    if (activeLine !== null) {
+      const key = vocabKey(activeLine, activeIdx);
+      const gloss = doc.glosses[key];
+      const token = doc.lines[activeLine] && doc.lines[activeLine][activeIdx];
+      if (gloss && token) renderDetail(token, gloss, activeLine, activeIdx);
     }
   }
 
@@ -491,7 +596,7 @@
     inTitle.value = doc.title || '';
     inMeta.value  = doc.meta  || '';
     inSub.value   = doc.subtitle || '';
-    inText.value  = linesToPlainText(doc.lines);
+    inText.value  = linesToPlainText(doc.lines, doc.paraBreaks);
     modal.classList.add('on');
     modal.setAttribute('aria-hidden', 'false');
     setTimeout(() => inText.focus(), 50);
@@ -501,13 +606,15 @@
     modal.setAttribute('aria-hidden', 'true');
   }
 
-  function linesToPlainText(lines) {
-    return (lines || []).map(tokens =>
-      tokens.map((t, i) => {
-        if (t.w) return (i > 0 ? ' ' : '') + (t.display || t.w);
+  function linesToPlainText(lines, paraBreaks) {
+    const breakSet = new Set(paraBreaks || []);
+    return (lines || []).map((tokens, i) => {
+      const text = tokens.map((t, j) => {
+        if (t.w) return (j > 0 ? ' ' : '') + (t.display || t.w);
         return t.punct || '';
-      }).join('').replace(/\s+([,.;:!?])/g, '$1').trim()
-    ).join('\n');
+      }).join('').replace(/\s+([,.;:!?])/g, '$1').trim();
+      return breakSet.has(i) ? '\n' + text : text;
+    }).join('\n');
   }
 
   function loadNewText() {
@@ -519,7 +626,7 @@
       toast('Paste some text first', true);
       return;
     }
-    const { lines, lineText } = tokenizeText(text);
+    const { lines, lineText, paraBreaks } = tokenizeText(text);
     if (!lines.length) {
       toast('No readable words found', true);
       return;
@@ -530,6 +637,7 @@
     doc.subtitle = sub;
     doc.lines = lines;
     doc.lineText = lineText;
+    doc.paraBreaks = paraBreaks;
     activeLine = activeIdx = null;
     saveDoc();
     renderFolio();
@@ -724,6 +832,9 @@
   actSave.addEventListener('click', toggleSave);
   actDeep.addEventListener('click', deepCheckCurrent);
   actNext.addEventListener('click', nextWord);
+  actEdit.addEventListener('click', enterEditMode);
+  actEditSave.addEventListener('click', () => exitEditMode(true));
+  actEditCancel.addEventListener('click', () => exitEditMode(false));
   btnNew.addEventListener('click', openModal);
   btnPasteEmpty.addEventListener('click', openModal);
   btnLoad.addEventListener('click', loadNewText);
@@ -748,6 +859,10 @@
     if (modal.classList.contains('on')) {
       if (e.key === 'Escape') closeModal();
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); loadNewText(); }
+      return;
+    }
+    if (editMode) {
+      if (e.key === 'Escape') { e.preventDefault(); exitEditMode(false); }
       return;
     }
     if (e.target && (e.target.isContentEditable || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
