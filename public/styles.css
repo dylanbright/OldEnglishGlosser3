@@ -287,14 +287,16 @@ body {
 
 /* Gloss panel (right) */
 .panel {
-  position: relative;
+  position: sticky;
+  top: 0;
+  align-self: start;
   background:
     linear-gradient(180deg, var(--paper-deep), var(--paper) 8%, var(--paper) 92%, var(--paper-deep));
   padding: 54px 56px 40px 56px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  min-height: 100vh;
+  overflow-y: auto;
+  max-height: 100vh;
 }
 .panel::before {
   content: "";
@@ -732,7 +734,12 @@ body {
 /* Responsive */
 @media (max-width: 1000px) {
   .shell { grid-template-columns: 1fr; }
-  .panel { border-top: 1px solid var(--rule); min-height: auto; }
+  .panel {
+    border-top: 1px solid var(--rule);
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
   .folio { padding: 40px 40px 140px; }
   .folio::before, .folio::after { inset: 20px 18px; }
   .folio-foot { left: 40px; right: 40px; }
