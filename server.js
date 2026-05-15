@@ -11,6 +11,48 @@ if (!process.env.ANTHROPIC_API_KEY) {
 
 const client = new Anthropic.Anthropic();
 
+const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+const MAX_RETRIES = 5;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function createMessageWithRetry(request) {
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await client.messages.create(request);
+    } catch (err) {
+      lastErr = err;
+      const status = err && err.status;
+      const shouldRetryHeader = err && err.headers && err.headers['x-should-retry'];
+      const retryable =
+        RETRYABLE_STATUSES.has(status) ||
+        shouldRetryHeader === 'true' ||
+        err.name === 'APIConnectionError' ||
+        err.name === 'APIConnectionTimeoutError';
+      if (!retryable || attempt === MAX_RETRIES) throw err;
+
+      const retryAfterHeader = err.headers && (err.headers['retry-after'] || err.headers['Retry-After']);
+      let delayMs;
+      const retryAfterSec = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+      if (Number.isFinite(retryAfterSec) && retryAfterSec >= 0) {
+        delayMs = retryAfterSec * 1000;
+      } else {
+        const base = Math.min(30000, 1000 * Math.pow(2, attempt));
+        const jitter = Math.random() * 0.3 * base;
+        delayMs = base + jitter;
+      }
+      console.warn(
+        `Anthropic request failed (status=${status || 'n/a'}, attempt ${attempt + 1}/${MAX_RETRIES + 1}); retrying in ${Math.round(delayMs)}ms`,
+      );
+      await sleep(delayMs);
+    }
+  }
+  throw lastErr;
+}
+
 const SYSTEM_PROMPT = `You are an expert glossator of Old English (Ænglisc) texts, trained in Anglo-Saxon philology and historical linguistics. When given a single word drawn from a surrounding line of Old English, you produce a concise, scholarly gloss in the Bosworth-Toller / Clark Hall tradition.
 
 Return a JSON object with exactly six fields:
@@ -77,7 +119,7 @@ app.post('/api/gloss', async (req, res) => {
       request.output_config = { effort: 'low' };
     }
 
-    const response = await client.messages.create(request);
+    const response = await createMessageWithRetry(request);
 
     const text = response.content
       .filter((b) => b.type === 'text')
@@ -109,7 +151,15 @@ app.post('/api/gloss', async (req, res) => {
   } catch (err) {
     console.error('Gloss error:', err);
     const status = err.status || 500;
-    res.status(status).json({ error: err.message || 'Internal error' });
+    let message = err.message || 'Internal error';
+    if (status === 529) {
+      message = 'The glossary service is overloaded right now. Please try again in a moment.';
+    } else if (status === 429) {
+      message = 'Rate limit reached. Please wait a few seconds and try again.';
+    } else if (status >= 500 && status < 600) {
+      message = 'The glossary service is temporarily unavailable. Please try again.';
+    }
+    res.status(status).json({ error: message });
   }
 });
 
