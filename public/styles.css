@@ -706,6 +706,108 @@ body {
 }
 .modal-actions .act.primary { flex: 0 0 auto; padding: 10px 22px; }
 
+/* Library modal */
+.lib-section {
+  margin-bottom: 22px;
+}
+.lib-section:last-child { margin-bottom: 0; }
+.lib-section-head {
+  font-family: var(--sc);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+}
+.lib-save-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.lib-save-row input {
+  flex: 1;
+  font-family: var(--serif);
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--paper-deep);
+  border: 1px solid var(--rule);
+  padding: 8px 10px;
+  border-radius: 1px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.lib-save-row input:focus { border-color: var(--rubric); }
+.lib-save-row .act { flex: 0 0 auto; }
+.lib-hint {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: 6px;
+}
+.lib-hint.err { color: var(--rubric-deep); font-style: normal; }
+.lib-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+}
+.lib-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+.lib-item:hover { background: oklch(0.94 0.030 80 / 0.5); }
+.lib-item-main {
+  flex: 1;
+  min-width: 0;
+}
+.lib-item-title {
+  font-family: var(--serif);
+  font-size: 16px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-item-sub {
+  font-family: var(--sc);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+.lib-item-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.lib-item-actions .foot-btn { padding: 4px 10px; font-size: 10px; }
+.lib-item-del { color: var(--rubric); }
+.lib-item-del:hover { color: var(--paper); background: var(--rubric); border-color: var(--rubric-deep); }
+.lib-empty {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-faint);
+  padding: 12px 0;
+}
+.lib-error {
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--rubric-deep);
+  padding: 12px 0;
+}
+.lib-files-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* Toast */
 .toast {
   position: fixed;

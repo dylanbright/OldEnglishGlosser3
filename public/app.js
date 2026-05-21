@@ -42,11 +42,19 @@
   const btnLoad    = $('btn-load');
   const btnPasteEmpty = $('btn-paste-empty');
   const btnNew     = $('btn-new');
-  const btnImport  = $('btn-import');
-  const btnExport  = $('btn-export');
+  const btnLibrary = $('btn-library');
   const btnExportCsv = $('btn-export-csv');
   const btnReset   = $('btn-reset');
   const fileInput  = $('file-input');
+  const libModal   = $('lib-modal');
+  const libSaveSlug = $('lib-save-slug');
+  const libSaveHint = $('lib-save-hint');
+  const btnLibSave = $('btn-lib-save');
+  const libList    = $('lib-list');
+  const libEmpty   = $('lib-empty');
+  const libError   = $('lib-error');
+  const btnLibImport = $('btn-lib-import');
+  const btnLibExport = $('btn-lib-export');
 
   // Empty document template
   function emptyDoc() {
@@ -60,6 +68,7 @@
       paraBreaks: [],  // line indices that open a new paragraph (preceded by blank line)
       glosses: {},     // "li:idx" -> { lemma, pos, parse, gloss }
       vocab: [],       // [{ key, w, lemma, pos, gloss }]
+      serverSlug: null,// last known server filename, if any
     };
   }
 
@@ -92,7 +101,23 @@
       lines: Array.isArray(d.lines) ? d.lines : [],
       lineText: Array.isArray(d.lineText) ? d.lineText : [],
       paraBreaks: Array.isArray(d.paraBreaks) ? d.paraBreaks : [],
+      serverSlug: typeof d.serverSlug === 'string' ? d.serverSlug : null,
     };
+  }
+
+  // —————— Slug helpers ——————
+  const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+  function slugify(s) {
+    return (s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64) || '';
+  }
+
+  function defaultSlug() {
+    return doc.serverSlug || slugify(doc.title) || 'untitled';
   }
 
   function saveDoc() {
@@ -805,6 +830,185 @@
     saveDoc();
   }
 
+  // —————— Server library ——————
+  async function apiRequest(url, opts) {
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      let msg = `Server returned ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body && body.error) msg = body.error;
+      } catch (_) {}
+      throw new Error(msg);
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) return res.json();
+    return res.text();
+  }
+
+  function serverListDocs()        { return apiRequest('/api/docs'); }
+  function serverLoadDoc(slug)     { return apiRequest('/api/docs/' + encodeURIComponent(slug)); }
+  function serverDeleteDoc(slug)   { return apiRequest('/api/docs/' + encodeURIComponent(slug), { method: 'DELETE' }); }
+  function serverSaveDoc(slug, d)  {
+    return apiRequest('/api/docs/' + encodeURIComponent(slug), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d),
+    });
+  }
+
+  function openLibrary() {
+    libSaveSlug.value = defaultSlug();
+    libSaveHint.textContent = 'Lowercase letters, digits, and hyphens.';
+    libSaveHint.classList.remove('err');
+    btnLibExport.disabled = !doc.lines.length;
+    btnLibSave.disabled = !doc.lines.length;
+    libModal.classList.add('on');
+    libModal.setAttribute('aria-hidden', 'false');
+    refreshLibrary();
+    setTimeout(() => libSaveSlug.focus(), 50);
+  }
+
+  function closeLibrary() {
+    libModal.classList.remove('on');
+    libModal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function refreshLibrary() {
+    libError.hidden = true;
+    libError.textContent = '';
+    libList.innerHTML = '';
+    libEmpty.hidden = true;
+    try {
+      const data = await serverListDocs();
+      const docs = (data && data.docs) || [];
+      if (!docs.length) {
+        libEmpty.hidden = false;
+        return;
+      }
+      for (const d of docs) {
+        libList.appendChild(renderLibraryItem(d));
+      }
+    } catch (e) {
+      libError.hidden = false;
+      libError.textContent = 'Could not load library: ' + (e.message || 'error');
+    }
+  }
+
+  function renderLibraryItem(entry) {
+    const li = document.createElement('li');
+    li.className = 'lib-item';
+
+    const main = document.createElement('div');
+    main.className = 'lib-item-main';
+    const title = document.createElement('div');
+    title.className = 'lib-item-title';
+    title.textContent = entry.title || entry.slug;
+    const sub = document.createElement('div');
+    sub.className = 'lib-item-sub';
+    const parts = [entry.slug];
+    if (entry.lineCount) parts.push(entry.lineCount + ' lines');
+    if (entry.vocabCount) parts.push(entry.vocabCount + ' saved');
+    parts.push(relativeTime(entry.modifiedAt));
+    sub.textContent = parts.join(' · ');
+    main.appendChild(title);
+    main.appendChild(sub);
+
+    const actions = document.createElement('div');
+    actions.className = 'lib-item-actions';
+    const openBtn = document.createElement('button');
+    openBtn.className = 'foot-btn';
+    openBtn.textContent = 'Open';
+    openBtn.addEventListener('click', (e) => { e.stopPropagation(); loadFromServer(entry.slug); });
+    const delBtn = document.createElement('button');
+    delBtn.className = 'foot-btn lib-item-del';
+    delBtn.textContent = 'Delete';
+    delBtn.title = 'Delete from server';
+    delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteFromServer(entry); });
+    actions.appendChild(openBtn);
+    actions.appendChild(delBtn);
+
+    li.appendChild(main);
+    li.appendChild(actions);
+    li.addEventListener('click', () => loadFromServer(entry.slug));
+    return li;
+  }
+
+  function relativeTime(iso) {
+    if (!iso) return '';
+    const then = new Date(iso).getTime();
+    if (!Number.isFinite(then)) return '';
+    const diffSec = Math.round((Date.now() - then) / 1000);
+    if (diffSec < 60) return 'just now';
+    if (diffSec < 3600) return Math.floor(diffSec / 60) + 'm ago';
+    if (diffSec < 86400) return Math.floor(diffSec / 3600) + 'h ago';
+    if (diffSec < 86400 * 30) return Math.floor(diffSec / 86400) + 'd ago';
+    return new Date(iso).toLocaleDateString();
+  }
+
+  async function saveToServer() {
+    if (!doc.lines.length) { toast('Nothing to save', true); return; }
+    syncHeaderFromDom();
+    const slug = (libSaveSlug.value || '').trim();
+    if (!SLUG_RE.test(slug)) {
+      libSaveHint.textContent = 'Use only a-z, 0-9, and hyphens (max 64 chars, must start alphanumeric).';
+      libSaveHint.classList.add('err');
+      libSaveSlug.focus();
+      return;
+    }
+    btnLibSave.disabled = true;
+    try {
+      await serverSaveDoc(slug, doc);
+      doc.serverSlug = slug;
+      saveDoc();
+      libSaveHint.textContent = 'Saved as ' + slug + '.json';
+      libSaveHint.classList.remove('err');
+      toast('Saved to server');
+      refreshLibrary();
+    } catch (e) {
+      libSaveHint.textContent = 'Save failed: ' + (e.message || 'error');
+      libSaveHint.classList.add('err');
+    } finally {
+      btnLibSave.disabled = false;
+    }
+  }
+
+  async function loadFromServer(slug) {
+    try {
+      const loaded = await serverLoadDoc(slug);
+      if (!loaded || !Array.isArray(loaded.lines)) throw new Error('Invalid document');
+      doc = migrate(loaded);
+      doc.serverSlug = slug;
+      activeLine = activeIdx = null;
+      saveDoc();
+      renderFolio();
+      renderVocab();
+      showPanel('empty');
+      closeLibrary();
+      toast('Opened ' + slug);
+    } catch (e) {
+      libError.hidden = false;
+      libError.textContent = 'Open failed: ' + (e.message || 'error');
+    }
+  }
+
+  async function deleteFromServer(entry) {
+    if (!confirm('Delete "' + (entry.title || entry.slug) + '" from the server?')) return;
+    try {
+      await serverDeleteDoc(entry.slug);
+      if (doc.serverSlug === entry.slug) {
+        doc.serverSlug = null;
+        saveDoc();
+      }
+      toast('Deleted ' + entry.slug);
+      refreshLibrary();
+    } catch (e) {
+      libError.hidden = false;
+      libError.textContent = 'Delete failed: ' + (e.message || 'error');
+    }
+  }
+
   // —————— Toast ——————
   let toastEl = null;
   let toastTimer = null;
@@ -838,17 +1042,25 @@
   btnNew.addEventListener('click', openModal);
   btnPasteEmpty.addEventListener('click', openModal);
   btnLoad.addEventListener('click', loadNewText);
-  btnExport.addEventListener('click', exportDoc);
   btnExportCsv.addEventListener('click', exportAnkiCsv);
-  btnImport.addEventListener('click', () => fileInput.click());
+  btnLibrary.addEventListener('click', openLibrary);
+  btnLibSave.addEventListener('click', saveToServer);
+  btnLibImport.addEventListener('click', () => fileInput.click());
+  btnLibExport.addEventListener('click', () => { closeLibrary(); exportDoc(); });
+  libSaveSlug.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveToServer(); }
+  });
   fileInput.addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
-    if (file) importDoc(file);
+    if (file) { importDoc(file); closeLibrary(); }
     fileInput.value = '';
   });
 
   modal.addEventListener('click', (e) => {
     if (e.target.dataset.close !== undefined) closeModal();
+  });
+  libModal.addEventListener('click', (e) => {
+    if (e.target.dataset.closeLib !== undefined) closeLibrary();
   });
 
   [folioTitle, folioMeta, folioSub].forEach(el => {
@@ -856,6 +1068,10 @@
   });
 
   document.addEventListener('keydown', (e) => {
+    if (libModal.classList.contains('on')) {
+      if (e.key === 'Escape') closeLibrary();
+      return;
+    }
     if (modal.classList.contains('on')) {
       if (e.key === 'Escape') closeModal();
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); loadNewText(); }

@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const fs = require('fs');
+const fsp = require('fs').promises;
 const path = require('path');
 const express = require('express');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -77,6 +79,19 @@ Example:
 Word: "gewylt"
 Line: "of ðe cymð se Heretoga seðe gewylt and gewissað Israhela folc"
 Response: {"lemma":"gewieldan","pos":"v.","posFull":"Verb","parse":"3sg. pres. indic., wk. vb. cl. I (i-mutated causative of wealdan)","gloss":"rules, governs, has dominion over","etymology":"*ga-waldijaną; cf. OHG giwaltan, Gothic waldan; related to OE wealdan 'to rule'"}`;
+
+const DATA_DIR = process.env.OEG_DATA_DIR
+  ? path.resolve(process.env.OEG_DATA_DIR)
+  : path.join(__dirname, 'data');
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const MAX_DOC_BYTES = 10 * 1024 * 1024;
+
+function slugPath(slug) {
+  if (typeof slug !== 'string' || !SLUG_RE.test(slug)) return null;
+  return path.join(DATA_DIR, slug + '.json');
+}
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -163,7 +178,94 @@ app.post('/api/gloss', async (req, res) => {
   }
 });
 
+app.get('/api/docs', async (req, res) => {
+  try {
+    const entries = await fsp.readdir(DATA_DIR);
+    const out = [];
+    for (const entry of entries) {
+      if (!entry.endsWith('.json')) continue;
+      const slug = entry.slice(0, -5);
+      if (!SLUG_RE.test(slug)) continue;
+      const full = path.join(DATA_DIR, entry);
+      try {
+        const stat = await fsp.stat(full);
+        const raw = await fsp.readFile(full, 'utf-8');
+        const parsed = JSON.parse(raw);
+        out.push({
+          slug,
+          title: typeof parsed.title === 'string' ? parsed.title : '',
+          meta: typeof parsed.meta === 'string' ? parsed.meta : '',
+          subtitle: typeof parsed.subtitle === 'string' ? parsed.subtitle : '',
+          lineCount: Array.isArray(parsed.lines) ? parsed.lines.length : 0,
+          vocabCount: Array.isArray(parsed.vocab) ? parsed.vocab.length : 0,
+          modifiedAt: stat.mtime.toISOString(),
+          bytes: stat.size,
+        });
+      } catch (e) {
+        console.warn('Skipping unreadable doc', entry, e.message);
+      }
+    }
+    out.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+    res.json({ docs: out });
+  } catch (err) {
+    console.error('List docs error:', err);
+    res.status(500).json({ error: 'Failed to list saved docs' });
+  }
+});
+
+app.get('/api/docs/:slug', async (req, res) => {
+  const p = slugPath(req.params.slug);
+  if (!p) return res.status(400).json({ error: 'Invalid slug' });
+  try {
+    const raw = await fsp.readFile(p, 'utf-8');
+    res.type('application/json').send(raw);
+  } catch (e) {
+    if (e.code === 'ENOENT') return res.status(404).json({ error: 'Not found' });
+    console.error('Read doc error:', e);
+    res.status(500).json({ error: 'Failed to read doc' });
+  }
+});
+
+app.put('/api/docs/:slug', express.json({ limit: '10mb' }), async (req, res) => {
+  const p = slugPath(req.params.slug);
+  if (!p) return res.status(400).json({ error: 'Invalid slug — use a-z, 0-9, hyphens; up to 64 chars' });
+  const body = req.body;
+  if (!body || typeof body !== 'object' || !Array.isArray(body.lines)) {
+    return res.status(400).json({ error: 'Body must be a glosser document JSON' });
+  }
+  try {
+    const payload = JSON.stringify(body, null, 2);
+    if (Buffer.byteLength(payload, 'utf-8') > MAX_DOC_BYTES) {
+      return res.status(413).json({ error: 'Doc too large' });
+    }
+    await fsp.writeFile(p, payload, 'utf-8');
+    const stat = await fsp.stat(p);
+    res.json({
+      slug: req.params.slug,
+      modifiedAt: stat.mtime.toISOString(),
+      bytes: stat.size,
+    });
+  } catch (e) {
+    console.error('Save doc error:', e);
+    res.status(500).json({ error: 'Failed to save doc' });
+  }
+});
+
+app.delete('/api/docs/:slug', async (req, res) => {
+  const p = slugPath(req.params.slug);
+  if (!p) return res.status(400).json({ error: 'Invalid slug' });
+  try {
+    await fsp.unlink(p);
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.code === 'ENOENT') return res.status(404).json({ error: 'Not found' });
+    console.error('Delete doc error:', e);
+    res.status(500).json({ error: 'Failed to delete doc' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Old English Glosser running at http://localhost:${PORT}`);
+  console.log(`Saved docs directory: ${DATA_DIR}`);
 });
