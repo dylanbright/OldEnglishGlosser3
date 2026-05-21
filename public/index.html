@@ -34,8 +34,7 @@
       <div class="foot-left">Click any word to reveal its gloss</div>
       <div class="foot-actions">
         <button class="foot-btn" id="btn-new">New text</button>
-        <button class="foot-btn" id="btn-import">Import JSON</button>
-        <button class="foot-btn" id="btn-export">Export JSON</button>
+        <button class="foot-btn" id="btn-library">Library</button>
         <button class="foot-btn" id="btn-export-csv">Anki CSV</button>
         <button class="foot-btn" id="btn-reset">Clear selection</button>
       </div>
@@ -127,6 +126,41 @@
     <div class="modal-actions">
       <button class="foot-btn" data-close>Cancel</button>
       <button class="act primary" id="btn-load">Load text</button>
+    </div>
+  </div>
+</div>
+
+<!-- Library modal -->
+<div class="modal" id="lib-modal" aria-hidden="true">
+  <div class="modal-backdrop" data-close-lib></div>
+  <div class="modal-body" role="dialog" aria-labelledby="lib-title">
+    <div class="modal-head">
+      <div class="eyebrow" id="lib-title">Library</div>
+      <button class="modal-close" data-close-lib aria-label="Close">×</button>
+    </div>
+
+    <div class="lib-section">
+      <div class="lib-section-head">Save current to server</div>
+      <div class="lib-save-row">
+        <input type="text" id="lib-save-slug" placeholder="filename-slug" autocomplete="off" spellcheck="false">
+        <button class="act primary" id="btn-lib-save">Save</button>
+      </div>
+      <div class="lib-hint" id="lib-save-hint">Lowercase letters, digits, and hyphens.</div>
+    </div>
+
+    <div class="lib-section">
+      <div class="lib-section-head">Saved on server</div>
+      <ul class="lib-list" id="lib-list"></ul>
+      <div class="lib-empty" id="lib-empty" hidden>Nothing saved yet.</div>
+      <div class="lib-error" id="lib-error" hidden></div>
+    </div>
+
+    <div class="lib-section lib-files">
+      <div class="lib-section-head">Or use a file</div>
+      <div class="lib-files-row">
+        <button class="foot-btn" id="btn-lib-import">Import from file…</button>
+        <button class="foot-btn" id="btn-lib-export">Export to file</button>
+      </div>
     </div>
   </div>
 </div>

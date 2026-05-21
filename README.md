@@ -15,6 +15,7 @@ An AI-powered glossing tool for Old English texts. Paste any passage, click any 
 - **Vocabulary list** — save words with **✦ Save**; the list persists across sessions
 - **Export to Anki** — export the vocabulary list as a CSV ready to import into Anki (lemma front, bolded context sentence, HTML-formatted grammar back)
 - **Import / Export JSON** — save and reload the full document state (text, glosses, vocabulary) as a JSON file
+- **Server library** — save documents to the server in a central place (intended for single-user use on a private/local network) and open or delete them from any device pointing at that server
 - **Sweet's Reader dot notation** — middle dots used as prefix separators (e.g. `ā · scēaf`) are treated as a single word for glossing and displayed with the dot intact
 - **Paragraph breaks** — blank lines in the pasted text are preserved as visual paragraph separators in the folio
 - **Editable header** — click the title, metadata, or subtitle to edit them in place
@@ -71,6 +72,7 @@ Browser (public/)
 Server (server.js)
   └── Express static   — serves public/
   └── POST /api/gloss  — proxies to Claude, hides the API key
+  └── GET/PUT/DELETE   — /api/docs[/:slug], server-side document library (./data/)
 ```
 
 The browser never touches the Anthropic API directly. All calls go through `/api/gloss`, which keeps the key server-side.
@@ -129,6 +131,17 @@ Returns a JSON object:
 **Double-check** — `thinking: { type: "adaptive" }`, `max_tokens: 4096`, plus an extra prompt nudge to weigh alternative parses. Used for genuinely ambiguous forms. The button turns red and shows **✓ Deep-verified** after completion.
 
 The system prompt is cache-controlled (`cache_control: { type: "ephemeral" }`) so repeat requests in the same session avoid re-sending ~1 KB of prompt text.
+
+### Server library
+
+Click **Library** in the folio footer to save the current document to the server, open a previously saved one, or delete it. Documents are stored as JSON files in `./data/` (override with the `OEG_DATA_DIR` environment variable). Filenames are slugs derived from the title: `a-z`, `0-9`, and hyphens only (max 64 chars). This feature is intended for single-user use on a private network — there is no authentication, so do **not** expose the server to the public internet with the library enabled.
+
+| Endpoint | Description |
+|---|---|
+| `GET /api/docs` | List saved documents with title, slug, line/vocab counts, and mtime |
+| `GET /api/docs/:slug` | Return the raw document JSON |
+| `PUT /api/docs/:slug` | Upsert a document (body is the full doc JSON, ≤ 10 MB) |
+| `DELETE /api/docs/:slug` | Delete a document |
 
 ### Anki CSV export
 

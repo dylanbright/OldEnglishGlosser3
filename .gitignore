@@ -8,3 +8,4 @@ npm-debug.log*
 .vscode/
 .claude/settings.local.json
 .claude/worktrees/
+data/
